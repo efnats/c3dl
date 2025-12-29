@@ -573,9 +573,13 @@ def count_partial_downloads(config: Config) -> int:
 
 def print_stats(config: Config):
     """Print download statistics for both directories"""
-    print(f"\n{Colors.BOLD}{'=' * 50}")
-    print(f"Statistics for {config.congress}")
-    print(f"{'=' * 50}{Colors.RESET}")
+    title = f" Statistics for {config.congress} "
+    width = max(50, len(title) + 4)
+    
+    print()
+    print(f"{Colors.BOLD}╭{'─' * (width - 2)}╮{Colors.RESET}")
+    print(f"{Colors.BOLD}│{title:^{width - 2}}│{Colors.RESET}")
+    print(f"{Colors.BOLD}╰{'─' * (width - 2)}╯{Colors.RESET}")
 
     media_extensions = ("*.mp4", "*.webm", "*.mp3", "*.opus")
 
