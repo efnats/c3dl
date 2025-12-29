@@ -53,13 +53,19 @@ if not sys.stdout.isatty():
     Colors.disable()
 
 
+def print_separator():
+    """Print a visual separator between sections"""
+    print(f"\n{Colors.DIM}{'─' * 50}{Colors.RESET}\n")
+
+
 @dataclass
 class Config:
     """Configuration container with dynamic URL generation"""
     congress: str
     base_dir: Path
     quality: str = "hd"
-    wait_time: int = 900
+    wait_time: int = 120
+    retries: int = 0
 
     # Quality presets: (feed_name, file_extension, description)
     QUALITY_PRESETS = {
@@ -248,7 +254,7 @@ def truncate_for_display(text: str, max_width: int = 50) -> str:
     return text[:max_width - 3] + "..."
 
 
-def download_file(url: str, output_path: Path, description: str, expected_size: int = 0, max_retries: int = 3) -> bool:
+def download_file(url: str, output_path: Path, description: str, expected_size: int = 0, max_retries: int = 1) -> bool:
     """
     Download a file with progress bar, resume support, and retry logic.
     
@@ -337,8 +343,9 @@ def download_file(url: str, output_path: Path, description: str, expected_size: 
                 print(f"{Colors.YELLOW}  Retrying in {wait_time}s...{Colors.RESET}")
                 time.sleep(wait_time)
     
-    # All retries failed - keep .part file for future resume
-    print(f"{Colors.DIM}  Partial download kept for future resume{Colors.RESET}")
+    # All retries failed - keep .part file for future resume (if it exists)
+    if part_path.exists():
+        print(f"{Colors.DIM}  Partial download kept for future resume{Colors.RESET}")
     return False
 
 
@@ -432,7 +439,7 @@ def download_releases(config: Config) -> int:
         for i, dl in enumerate(downloads, 1):
             print(f"\n{Colors.BOLD}[{i}/{len(downloads)}]{Colors.RESET} {dl['title']}")
 
-            if download_file(dl['url'], dl['output_path'], dl['filename'], dl['size']):
+            if download_file(dl['url'], dl['output_path'], dl['filename'], dl['size'], config.retries + 1):
                 downloaded += 1
 
     except Exception as e:
@@ -513,7 +520,7 @@ def download_relive(config: Config) -> int:
             print(f"\n{Colors.BOLD}[{i}/{len(downloads)}] Relive #{dl['relive_id']}:{Colors.RESET} {dl['title']}")
             
             video_url = f"{config.relive_cdn_base}/{dl['relive_id']}/muxed.mp4"
-            if download_file(video_url, dl['output_path'], dl['filename']):
+            if download_file(video_url, dl['output_path'], dl['filename'], 0, config.retries + 1):
                 downloaded += 1
 
     except Exception as e:
@@ -573,13 +580,8 @@ def count_partial_downloads(config: Config) -> int:
 
 def print_stats(config: Config):
     """Print download statistics for both directories"""
-    title = f" Statistics for {config.congress} "
-    width = max(50, len(title) + 4)
-    
-    print()
-    print(f"{Colors.BOLD}╭{'─' * (width - 2)}╮{Colors.RESET}")
-    print(f"{Colors.BOLD}│{title:^{width - 2}}│{Colors.RESET}")
-    print(f"{Colors.BOLD}╰{'─' * (width - 2)}╯{Colors.RESET}")
+    print_separator()
+    print(f"{Colors.BOLD}Statistics for {config.congress}{Colors.RESET}")
 
     media_extensions = ("*.mp4", "*.webm", "*.mp3", "*.opus")
 
@@ -589,12 +591,12 @@ def print_stats(config: Config):
             for ext in media_extensions:
                 files.extend(directory.glob(ext))
             total_size = sum(f.stat().st_size for f in files)
-            print(f"\n{Colors.CYAN}{name}:{Colors.RESET}")
+            print(f"{Colors.CYAN}{name}:{Colors.RESET}")
             print(f"  Files: {Colors.BOLD}{len(files)}{Colors.RESET}")
             print(f"  Size:  {Colors.BOLD}{format_size(total_size)}{Colors.RESET}")
             print(f"  {Colors.DIM}Path:  {directory}{Colors.RESET}")
         else:
-            print(f"\n{Colors.DIM}{name}: (directory not created yet){Colors.RESET}")
+            print(f"{Colors.DIM}{name}: (directory not created yet){Colors.RESET}")
 
     print()
 
@@ -650,9 +652,9 @@ Note: Quality setting only applies to releases. Relive streams are always MP4.
     parser.add_argument(
         "-w", "--wait-time",
         type=int,
-        default=900,
+        default=120,
         metavar="SEC",
-        help="Seconds between checks in loop mode (default: 900)"
+        help="Seconds between checks in loop mode (default: 120)"
     )
 
     parser.add_argument(
@@ -697,6 +699,14 @@ Note: Quality setting only applies to releases. Relive streams are always MP4.
         help="Don't remove relive files when releases become available"
     )
 
+    parser.add_argument(
+        "-r", "--retries",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Number of retry attempts for failed downloads (default: 0)"
+    )
+
     return parser.parse_args()
 
 
@@ -709,9 +719,11 @@ def run_download_cycle(config: Config, args: argparse.Namespace) -> int:
     total = 0
 
     if not args.releases_only:
+        print_separator()
         total += download_relive(config)
 
     if not args.relive_only:
+        print_separator()
         total += download_releases(config)
         
         # Clean up relive files that now have releases (unless disabled)
@@ -735,6 +747,7 @@ def main():
         base_dir=args.output_dir,
         quality=args.quality,
         wait_time=args.wait_time,
+        retries=args.retries,
     )
 
     print(f"{Colors.BOLD}{Colors.CYAN}c3dl{Colors.RESET} - CCC Media Downloader")
@@ -780,7 +793,6 @@ def main():
         partial_count = count_partial_downloads(config)
         if partial_count:
             print(f"{Colors.CYAN}Found {partial_count} partial download(s) that can be resumed{Colors.RESET}")
-            print()
 
         if args.once:
             # Single run mode
@@ -789,7 +801,6 @@ def main():
         else:
             # Loop mode
             print(f"{Colors.DIM}Running in loop mode (Ctrl+C to stop){Colors.RESET}")
-            print()
 
             while True:
                 try:

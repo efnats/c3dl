@@ -6,7 +6,7 @@ CCC Media Downloader - Downloads relive streams and finalized releases from Chao
 
 ```bash
 # Clone or download
-git clone https://github.com/user/c3dl.git
+git clone https://github.com/efnats/c3dl.git
 cd c3dl
 
 # Install dependencies
@@ -45,7 +45,7 @@ sudo chmod +x /usr/local/bin/c3dl
 ./c3dl.py -c 39c3 --releases-only
 ./c3dl.py -c 39c3 --relive-only
 
-# Shorter wait time between checks (5 minutes)
+# Longer wait time between checks (5 minutes)
 ./c3dl.py -c 39c3 -w 300
 ```
 
@@ -56,7 +56,8 @@ sudo chmod +x /usr/local/bin/c3dl
 | `-c, --congress ID` | Congress identifier (required), e.g., 38c3, 39c3 |
 | `-o, --output-dir DIR` | Base output directory (default: current directory) |
 | `-q, --quality PRESET` | Quality preset (default: hd) |
-| `-w, --wait-time SEC` | Seconds between checks (default: `900`) |
+| `-w, --wait-time SEC` | Seconds between checks (default: `120`) |
+| `-r, --retries N` | Number of retry attempts for failed downloads (default: `0`) |
 | `--once` | Run once and exit |
 | `--releases-only` | Only download finalized releases |
 | `--relive-only` | Only download relive streams |
@@ -129,7 +130,7 @@ sudo journalctl -fu c3dl
 - Quality setting (`-q`) only applies to releases, not relive streams
 - The script uses file locking to prevent multiple instances for the same congress
 - **Resume support**: Interrupted downloads are saved as `.part` files and automatically resumed
-- **Auto-retry**: Failed downloads are retried up to 3 times with exponential backoff
+- **Retry support**: Use `-r N` to retry failed downloads N times with exponential backoff
 - File sizes are verified against the feed – incomplete files are re-downloaded automatically
 - Colors are disabled automatically when output is piped (or use `--no-color`)
 - Use `--clean-partial` to remove all `.part` files and start fresh
