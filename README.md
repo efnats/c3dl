@@ -63,7 +63,7 @@ sudo chmod +x /usr/local/bin/c3dl
 | `--relive-only` | Only download relive streams |
 | `--dry-run` | Show what would be downloaded |
 | `--no-color` | Disable colored output |
-| `--no-cleanup` | Keep relive files even when releases exist |
+| `--no-cleanup` | Disable automatic cleanup (relives, duplicates) |
 | `--clean-partial` | Remove all partial downloads and exit |
 
 ## Quality Presets
@@ -127,6 +127,8 @@ sudo journalctl -fu c3dl
 - Releases are post-processed and uploaded over the following weeks/months (multiple quality options)
 - **Smart deduplication**: Relive downloads are skipped if a release already exists (fuzzy title matching)
 - **Auto-cleanup**: Relive files are automatically removed when their release becomes available
+- **Duplicate detection**: Duplicates are detected and removed at the start of each cycle (keeps the longer/more complete filename)
+- **Smart renaming**: If a title changes upstream, existing files are renamed instead of re-downloaded
 - Quality setting (`-q`) only applies to releases, not relive streams
 - The script uses file locking to prevent multiple instances for the same congress
 - **Resume support**: Interrupted downloads are saved as `.part` files and automatically resumed
@@ -134,7 +136,7 @@ sudo journalctl -fu c3dl
 - File sizes are verified against the feed – incomplete files are re-downloaded automatically
 - Colors are disabled automatically when output is piped (or use `--no-color`)
 - Use `--clean-partial` to remove all `.part` files and start fresh
-- Use `--no-cleanup` to keep relive files even when releases are available
+- Use `--no-cleanup` to disable automatic cleanup of relives and duplicates
 
 ## License
 
