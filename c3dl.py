@@ -239,6 +239,97 @@ def cleanup_relive_duplicates(config: Config) -> int:
     return removed
 
 
+def find_existing_by_title(title: str, directory: Path, extension: str, threshold: float = 0.85) -> Optional[Path]:
+    """
+    Find an existing file in directory that matches the given title.
+    
+    Uses fuzzy matching to handle slight differences in naming.
+    Returns the matching file path or None.
+    """
+    if not directory.exists():
+        return None
+    
+    normalized_new = normalize_title(title)
+    
+    for existing_file in directory.glob(f"*{extension}"):
+        if not existing_file.is_file():
+            continue
+        
+        normalized_existing = normalize_title(existing_file.name)
+        
+        # Check if one title starts with the other
+        if normalized_new.startswith(normalized_existing) or normalized_existing.startswith(normalized_new):
+            return existing_file
+        
+        # Fuzzy match
+        ratio = difflib.SequenceMatcher(None, normalized_new, normalized_existing).ratio()
+        if ratio >= threshold:
+            return existing_file
+    
+    return None
+
+
+def cleanup_directory_duplicates(directory: Path, extensions: tuple = ('.mp4', '.webm', '.mp3', '.opus')) -> int:
+    """
+    Find and remove duplicate files in a directory.
+    Keeps the file with the longer (more complete) title.
+    
+    Returns number of files removed.
+    """
+    if not directory.exists():
+        return 0
+    
+    files = []
+    for ext in extensions:
+        files.extend(directory.glob(f"*{ext}"))
+    
+    if not files:
+        return 0
+    
+    removed = 0
+    processed = set()
+    
+    for i, file1 in enumerate(files):
+        if file1 in processed:
+            continue
+        
+        norm1 = normalize_title(file1.name)
+        group = [file1]
+        
+        for file2 in files[i+1:]:
+            if file2 in processed:
+                continue
+            
+            norm2 = normalize_title(file2.name)
+            
+            # Check if one title starts with the other (common pattern for renamed titles)
+            if norm1.startswith(norm2) or norm2.startswith(norm1):
+                group.append(file2)
+                processed.add(file2)
+                continue
+            
+            # Fuzzy match
+            ratio = difflib.SequenceMatcher(None, norm1, norm2).ratio()
+            if ratio >= 0.85:
+                group.append(file2)
+                processed.add(file2)
+        
+        if len(group) > 1:
+            # Sort by title length - keep the longest (most complete) title
+            group.sort(key=lambda f: len(f.stem), reverse=True)
+            keep = group[0]
+            
+            for to_remove in group[1:]:
+                print(f"  {Colors.DIM}Removing duplicate: {to_remove.name}{Colors.RESET}")
+                print(f"  {Colors.DIM}  → Keeping: {keep.name}{Colors.RESET}")
+                to_remove.unlink()
+                removed += 1
+            
+            processed.add(file1)
+    
+    return removed
+
+
 def get_terminal_width() -> int:
     """Get terminal width, default to 80 if not available"""
     try:
@@ -404,6 +495,28 @@ def download_releases(config: Config) -> int:
                 else:
                     already_have += 1
                     continue
+            else:
+                # Check if a similar file exists (title might have been renamed upstream)
+                existing = find_existing_by_title(title, config.releases_dir, config.file_extension)
+                if existing:
+                    # Check file size to make sure it's complete
+                    actual_size = existing.stat().st_size
+                    if size > 0 and actual_size < size * 0.99:
+                        # Existing file is incomplete, delete and re-download with new name
+                        print(f"{Colors.YELLOW}⚠ Incomplete (renamed): {existing.name}{Colors.RESET}")
+                        existing.unlink()
+                        incomplete += 1
+                    elif len(filename) > len(existing.name):
+                        # New title is longer/more complete - rename
+                        print(f"{Colors.CYAN}↻ Renaming: {existing.name}{Colors.RESET}")
+                        print(f"{Colors.CYAN}        → {filename}{Colors.RESET}")
+                        existing.rename(output_path)
+                        already_have += 1
+                        continue
+                    else:
+                        # Existing title is same or longer - keep it
+                        already_have += 1
+                        continue
             
             # Check for existing .part file (can be resumed)
             part_path = output_path.with_suffix(output_path.suffix + '.part')
@@ -489,6 +602,17 @@ def download_relive(config: Config) -> int:
             output_path = config.relive_dir / filename
 
             if output_path.exists():
+                already_have += 1
+                continue
+            
+            # Check if a similar file exists (title might have been renamed)
+            existing = find_existing_by_title(title, config.relive_dir, ".mp4")
+            if existing:
+                if len(filename) > len(existing.name):
+                    # New title is longer/more complete - rename
+                    print(f"{Colors.CYAN}↻ Renaming: {existing.name}{Colors.RESET}")
+                    print(f"{Colors.CYAN}        → {filename}{Colors.RESET}")
+                    existing.rename(output_path)
                 already_have += 1
                 continue
 
@@ -717,6 +841,14 @@ def run_download_cycle(config: Config, args: argparse.Namespace) -> int:
     Returns total number of new downloads.
     """
     total = 0
+
+    # Clean up duplicates at the start of each cycle
+    if not args.no_cleanup:
+        for name, directory in [("relive", config.relive_dir), ("releases", config.releases_dir)]:
+            if directory.exists():
+                cleaned = cleanup_directory_duplicates(directory)
+                if cleaned:
+                    print(f"{Colors.GREEN}Cleaned up {cleaned} duplicate(s) in {name}{Colors.RESET}")
 
     if not args.releases_only:
         print_separator()
